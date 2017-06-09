@@ -4,14 +4,19 @@ import (
 "fmt"
 "io"
 "net/http"
-"strings"
+"encoding/json"
 "os"
+"bytes"
 )
 
 const (
-	speech_user = "your_user"
-	speech_pass = "your_pass"
+	speech_user = "{{ USER }}"
+	speech_pass = "{{ PASS }}"
 )
+
+type T struct {
+	Text string `json:"text"`
+}
 
 func main() {
 
@@ -40,8 +45,14 @@ func main() {
 
 	file_text := string(file_bytes)
 
-	file_text = strings.Replace(file_text, " ", "+", -1)
-	file_text = strings.Replace(file_text, "\n", "+", -1)
+	data := T{Text: file_text}
+
+	requestBytes, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+
+	text_body := bytes.NewReader(requestBytes)
 
 	file_output, err := os.Create(os.Args[1]+".wav")
 	if err != nil {
@@ -50,29 +61,26 @@ func main() {
 	}
 	defer file_output.Close()
 
-	file_url := fmt.Sprintf("https://stream.watsonplatform.net/text-to-speech/api/v1/synthesize?accept=audio/wav&text="+file_text)
-	request, err := http.NewRequest("GET", file_url, nil)
+	request, err := http.NewRequest("POST", "https://stream.watsonplatform.net/text-to-speech/api/v1/synthesize", text_body)
 	if err != nil {
-		//x
-		return
-	}        
-
-	request.SetBasicAuth(speech_user, speech_pass)
-
-	client := &http.Client{}
-
-	response, err := client.Do(request)
-	if err != nil {
-		//
 		return
 	}
 
-	defer response.Body.Close()       
+	request.SetBasicAuth(speech_user, speech_pass)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "audio/wav")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return
+	}
+
+	defer response.Body.Close()   
 
 	if _, err := io.Copy(file_output, response.Body); err != nil {
 		//
 		return
 	}
 
-	fmt.Println("Arquivo gerado!")
+	fmt.Println("Salvo: "+os.Args[1]+".wav")
 }
